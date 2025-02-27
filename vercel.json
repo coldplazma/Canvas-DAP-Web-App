@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "functions": {
+    "api/cors-proxy.js": {
+      "memory": 128,
+      "maxDuration": 10
+    }
+  },
+  "routes": [
+    { "src": "/proxy", "dest": "/api/cors-proxy" }
+  ]
+}

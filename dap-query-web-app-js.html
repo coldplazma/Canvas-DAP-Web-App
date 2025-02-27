@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canvas DAP Query Web App</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">Canvas DAP Query Web App</h1>
+        
+        <div class="card info-card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">About This Application</h5>
+            </div>
+            <div class="card-body">
+                <p>This web application allows you to query and download data from the Canvas Data Access Platform (DAP) API. The application runs entirely in your browser using JavaScript, which means:</p>
+                <ul>
+                    <li>Your credentials are never sent to a third-party server</li>
+                    <li>Downloaded data is saved directly to your computer</li>
+                    <li>No server-side processing or storage is required</li>
+                </ul>
+                <div class="alert alert-info">
+                    <strong>Note:</strong> This application uses the File System Access API to save files, which is only supported in Chromium-based browsers (Chrome, Edge, Opera, etc.).
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0">Query Form</h5>
+            </div>
+            <div class="card-body">
+                <form id="query-form">
+                    <div class="form-group">
+                        <label for="api-url">DAP API URL</label>
+                        <input type="text" class="form-control" id="api-url" value="https://api-gateway.instructure.com">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="client-id">Client ID <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="client-id" placeholder="Enter your DAP Client ID">
+                        <small class="form-text text-muted">Your DAP Client ID from Canvas</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="client-secret">Client Secret <span class="text-danger">*</span></label>
+                        <input type="password" class="form-control" id="client-secret" placeholder="Enter your DAP Client Secret">
+                        <small class="form-text text-muted">Your DAP Client Secret from Canvas</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="namespace">Namespace</label>
+                        <input type="text" class="form-control" id="namespace" value="canvas">
+                        <small class="form-text text-muted">Usually 'canvas' for most Canvas data</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="table">Table</label>
+                        <select class="form-control" id="table">
+                            <!-- Tables will be populated by JavaScript -->
+                        </select>
+                        <small class="form-text text-muted">Choose the table you want to query</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Query Type</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="query-type" id="snapshot" value="snapshot" checked>
+                            <label class="form-check-label" for="snapshot">Snapshot (Get all data)</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="query-type" id="incremental" value="incremental">
+                            <label class="form-check-label" for="incremental">Incremental (Changes since a date)</label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group" id="since-timestamp-group" style="display: none;">
+                        <label for="since-timestamp">Since Timestamp (Incremental) <span class="text-danger">*</span></label>
+                        <input type="datetime-local" class="form-control" id="since-timestamp">
+                        <small class="form-text text-muted">Only for incremental queries - fetch changes since this date/time</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="file-format">File Format</label>
+                        <select class="form-control" id="file-format">
+                            <option value="jsonl">JSONL</option>
+                            <option value="csv">CSV</option>
+                            <option value="tsv">TSV</option>
+                            <option value="parquet">Parquet</option>
+                        </select>
+                        <small class="form-text text-muted">Format of the downloaded data file</small>
+                    </div>
+                    
+                    <button type="button" class="btn btn-primary" id="start-query-btn">
+                        <i class="bi bi-cloud-download"></i> Start Query
+                    </button>
+                </form>
+                
+                <div id="status" class="alert mt-3"></div>
+                <div id="loading" class="text-center mt-3">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p id="loading-text">Processing query...</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="browser-compatibility mt-4">
+            <div class="alert alert-warning">
+                <h5>Browser Compatibility</h5>
+                <p>This application uses the File System Access API which is currently supported in:</p>
+                <ul>
+                    <li>Chrome 86+</li>
+                    <li>Edge 86+</li>
+                    <li>Opera 72+</li>
+                </ul>
+                <p>It is not supported in Firefox or Safari.</p>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>This application was built with JavaScript and runs entirely in your browser.</p>
+            <p>No data is sent to any server other than Canvas DAP API.</p>
+        </div>
+    </div>
+    
+    <div id="floating-status" class="floating-status alert alert-info">
+        <button type="button" class="btn-close float-end" aria-label="Close" onclick="document.getElementById('floating-status').style.display='none';"></button>
+        <div id="floating-status-text"></div>
+    </div>
+
+    <!-- Import our DAP client -->
+    <script src="dap_client.js"></script>
+    
+    <!-- Main application script -->
+    <script>
+        // Default table list (will be replaced with actual data from API when possible)
+        const DEFAULT_TABLES = [
+            "access_tokens", "account_users", "accounts", "assessment_question_banks",
+            "assessment_questions", "assignment_groups", "assignment_override_students",
+            "assignment_overrides", "assignments", "attachment_associations", "attachments",
+            "calendar_events", "canvadocs_annotation_contexts", "comment_bank_items",
+            "communication_channels", "content_migrations", "content_participation_counts",
+            "content_participations", "content_shares", "content_tags", "context_external_tools",
+            "context_module_progressions", "context_modules", "conversation_message_participants",
+            "conversation_messages", "conversation_participants", "conversations",
+            "course_account_associations", "course_sections", "courses",
+            "custom_gradebook_column_data", "custom_gradebook_columns",
+            "developer_key_account_bindings", "developer_keys", "discussion_entries",
+            "discussion_entry_participants", "discussion_topic_participants",
+            "discussion_topics", "enrollment_dates_overrides", "enrollment_states",
+            "enrollment_terms", "enrollments", "favorites", "folders", "grading_period_groups",
+            "grading_periods", "grading_standards", "group_categories", "group_memberships",
+            "groups", "late_policies", "learning_outcome_groups", "learning_outcome_question_results",
+            "learning_outcome_results", "learning_outcomes", "lti_line_items",
+            "lti_resource_links", "lti_results", "master_courses_child_content_tags",
+            "master_courses_child_subscriptions", "master_courses_master_content_tags",
+            "master_courses_master_migrations", "master_courses_master_templates",
+            "master_courses_migration_results", "originality_reports", "outcome_proficiencies",
+            "outcome_proficiency_ratings", "post_policies", "pseudonyms", "quiz_groups",
+            "quiz_questions", "quiz_submissions", "quizzes", "role_overrides", "roles",
+            "rubric_assessments", "rubric_associations", "rubrics", "score_statistics",
+            "scores", "submission_comments", "submission_versions", "submissions",
+            "user_account_associations", "user_notes", "users", "web_conference_participants",
+            "web_conferences", "wiki_pages", "wikis"
+        ];
+
+        // Function to populate the table dropdown with default values
+        function populateDefaultTables() {
+            try {
+                const tableSelect = document.getElementById("table");
+                // Clear any existing options
+                tableSelect.innerHTML = "";
+                
+                // Add new options
+                DEFAULT_TABLES.forEach(tableName => {
+                    const option = document.createElement("option");
+                    option.value = tableName;
+                    option.text = tableName;
+                    tableSelect.appendChild(option);
+                });
+                
+                console.log("Table dropdown populated with default values");
+            } catch (error) {
+                console.error("Error populating table dropdown:", error);
+            }
+        }
+
+        // Function to toggle since timestamp field visibility
+        function toggleSinceTimestamp() {
+            const sinceTimestampGroup = document.getElementById("since-timestamp-group");
+            const queryType = document.querySelector('input[name="query-type"]:checked').value;
+            
+            sinceTimestampGroup.style.display = queryType === "incremental" ? "block" : "none";
+        }
+
+        // Function to save file using File System Access API
+        async function saveFile(data, filename, mimeType = "text/plain") {
+            try {
+                // Check if browser supports File System Access API
+                if (typeof window.showSaveFilePicker !== 'function') {
+                    updateStatus("Your browser doesn't support the File System Access API. Please use Chrome or Edge.", "danger");
+                    return false;
+                }
+                
+                // Set file extension based on filename
+                let fileExtension = ".txt";
+                if (filename.includes(".")) {
+                    fileExtension = "." + filename.split(".").pop();
+                }
+                
+                // Set mime type based on file extension
+                if (fileExtension === ".jsonl") {
+                    mimeType = "application/jsonlines";
+                } else if (fileExtension === ".csv") {
+                    mimeType = "text/csv";
+                } else if (fileExtension === ".tsv") {
+                    mimeType = "text/plain";
+                } else if (fileExtension === ".parquet") {
+                    mimeType = "application/octet-stream";
+                }
+                
+                // Set file options
+                const options = {
+                    suggestedName: filename,
+                    types: [{
+                        description: 'Data Files',
+                        accept: {
+                            [mimeType]: [fileExtension]
+                        }
+                    }]
+                };
+                
+                // Show save file picker dialog
+                const fileHandle = await window.showSaveFilePicker(options);
+                
+                // Create a writable stream
+                const writable = await fileHandle.createWritable();
+                
+                // Write data to the file
+                await writable.write(data);
+                
+                // Close the file
+                await writable.close();
+                
+                return true;
+            } catch (error) {
+                console.error("Error saving file:", error);
+                updateStatus(`Error saving file: ${error.message}`, "danger");
+                return false;
+            }
+        }
+
+        // Function to show status messages
+        function updateStatus(message, statusType = "info") {
+            const statusElem = document.getElementById("status");
+            statusElem.className = `alert alert-${statusType} mt-3`;
+            statusElem.textContent = message;
+            statusElem.style.display = "block";
+        }
+
+        // Function to show floating status messages
+        function showFloatingStatus(message, statusType = "info") {
+            const statusElem = document.getElementById("floating-status");
+            statusElem.className = `floating-status alert alert-${statusType}`;
+            document.getElementById("floating-status-text").textContent = message;
+            statusElem.style.display = "block";
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                statusElem.style.display = "none";
+            }, 5000);
+        }
+
+        // Function to show/hide loading indicator
+        function toggleLoading(show = true, message = null) {
+            const loadingElem = document.getElementById("loading");
+            loadingElem.style.display = show ? "block" : "none";
+            
+            if (message && show) {
+                document.getElementById("loading-text").textContent = message;
+            }
+        }
+
+        // Function to fetch tables from the DAP API
+        async function fetchTables(dapClient, namespace) {
+            try {
+                return await dapClient.getTables(namespace);
+            } catch (error) {
+                console.error("Error fetching tables:", error);
+                return DEFAULT_TABLES;
+            }
+        }
+
+        // Update table dropdown with tables from the API
+        async function updateTableDropdown(dapClient, namespace) {
+            try {
+                // Show status
+                showFloatingStatus("Fetching available tables...", "info");
+                
+                // Fetch tables
+                const tables = await fetchTables(dapClient, namespace);
+                
+                if (!tables || tables.length === 0) {
+                    showFloatingStatus("No tables found or error fetching tables. Using default list.", "warning");
+                    return;
+                }
+                
+                // Clear existing options
+                const tableSelect = document.getElementById("table");
+                tableSelect.innerHTML = "";
+                
+                // Add new options
+                tables.forEach(tableName => {
+                    const option = document.createElement("option");
+                    option.value = tableName;
+                    option.text = tableName;
+                    tableSelect.appendChild(option);
+                });
+                
+                showFloatingStatus(`Found ${tables.length} tables in namespace '${namespace}'`, "success");
+            } catch (error) {
+                console.error("Error updating table dropdown:", error);
+                showFloatingStatus("Error fetching tables. Using default list.", "warning");
+            }
+        }
+
+        // Main function to start the query
+        async function startQuery() {
+            try {
+                // Show loading indicator
+                toggleLoading(true, "Initializing query...");
+                
+                // Clear previous status
+                document.getElementById("status").style.display = "none";
+                
+                // Get form values
+                const baseUrl = document.getElementById("api-url").value;
+                const clientId = document.getElementById("client-id").value;
+                const clientSecret = document.getElementById("client-secret").value;
+                const namespace = document.getElementById("namespace").value;
+                const table = document.getElementById("table").value;
+                const queryType = document.querySelector('input[name="query-type"]:checked').value;
+                const fileFormat = document.getElementById("file-format").value;
+                
+                // Validate required fields
+                if (!clientId || !clientSecret) {
+                    updateStatus("Please enter Client ID and Client Secret", "warning");
+                    toggleLoading(false);
+                    return;
+                }
+                
+                // Initialize DAP client with the deployed proxy URL - REPLACE THIS WITH YOUR ACTUAL DEPLOYED URL
+                const proxyUrl = "YOUR_VERCEL_DEPLOYMENT_URL/proxy";
+                const dapClient = new DAPClient(baseUrl, clientId, clientSecret, proxyUrl);
+                
+                try {
+                    // Authenticate
+                    toggleLoading(true, "Authenticating with Canvas DAP API...");
+                    await dapClient.authenticate();
+                    
+                    // Update the table dropdown with actual tables from the API
+                    await updateTableDropdown(dapClient, namespace);
+                    
+                    // Get table schema
+                    toggleLoading(true, `Retrieving schema for table '${table}'...`);
+                    updateStatus("Retrieving table schema...", "info");
+                    
+                    const schema = await dapClient.getTableSchema(namespace, table);
+                    console.log(`Table schema version: ${schema.version || 'unknown'}`);
+                    
+                    // Create the appropriate query
+                    let query;
+                    
+                    if (queryType === "snapshot") {
+                        // Perform a snapshot query
+                        toggleLoading(true, "Performing snapshot query...");
+                        updateStatus("Performing snapshot query...", "info");
+                        
+                        query = dapClient.createSnapshotQuery(fileFormat);
+                        
+                        // Get the table data
+                        const jobInfo = await dapClient.getTableData(namespace, table, query);
+                        console.log(`Snapshot query completed. Job ID: ${jobInfo.id}`);
+                        
+                        // Download the data
+                        toggleLoading(true, "Downloading snapshot data...");
+                        updateStatus("Downloading snapshot data...", "info");
+                        
+                        const downloadResult = await dapClient.downloadTableData(namespace, table, query);
+                        
+                        // Save each file
+                        const files = downloadResult.files || [];
+                        
+                        if (files.length === 0) {
+                            updateStatus("No data files returned from the query.", "warning");
+                            toggleLoading(false);
+                            return;
+                        }
+                        
+                        toggleLoading(true, `Saving ${files.length} file(s)...`);
+                        
+                        for (const fileData of files) {
+                            let filename = fileData.filename || `${table}.${fileFormat}`;
+                            const content = fileData.content;
+                            
+                            if (!filename.endsWith(`.${fileFormat}`)) {
+                                filename = `${filename}.${fileFormat}`;
+                            }
+                            
+                            const success = await saveFile(content, filename);
+                            
+                            if (success) {
+                                showFloatingStatus(`Saved file: ${filename}`, "success");
+                            } else {
+                                showFloatingStatus(`Failed to save file: ${filename}`, "danger");
+                            }
+                        }
+                        
+                        updateStatus("Snapshot query completed successfully!", "success");
+                        
+                    } else {  // incremental
+                        // Get the since timestamp
+                        const sinceTimestamp = document.getElementById("since-timestamp").value;
+                        
+                        if (!sinceTimestamp) {
+                            updateStatus("Please select a since timestamp for incremental query", "warning");
+                            toggleLoading(false);
+                            return;
+                        }
+                        
+                        // Convert the since_timestamp string to a Date object
+                        const sinceDate = new Date(sinceTimestamp);
+                        
+                        // Perform an incremental query
+                        toggleLoading(true, "Performing incremental query...");
+                        updateStatus("Performing incremental query...", "info");
+                        
+                        query = dapClient.createIncrementalQuery(fileFormat, sinceDate);
+                        
+                        // Get the table data
+                        const jobInfo = await dapClient.getTableData(namespace, table, query);
+                        console.log(`Incremental query completed. Job ID: ${jobInfo.id}`);
+                        
+                        // Download the data
+                        toggleLoading(true, "Downloading incremental data...");
+                        updateStatus("Downloading incremental data...", "info");
+                        
+                        const downloadResult = await dapClient.downloadTableData(namespace, table, query);
+                        
+                        // Save each file
+                        const files = downloadResult.files || [];
+                        
+                        if (files.length === 0) {
+                            updateStatus("No data files returned from the query.", "warning");
+                            toggleLoading(false);
+                            return;
+                        }
+                        
+                        toggleLoading(true, `Saving ${files.length} file(s)...`);
+                        
+                        for (const fileData of files) {
+                            let filename = fileData.filename || `${table}_incremental.${fileFormat}`;
+                            const content = fileData.content;
+                            
+                            if (!filename.endsWith(`.${fileFormat}`)) {
+                                filename = `${filename}.${fileFormat}`;
+                            }
+                            
+                            const success = await saveFile(content, filename);
+                            
+                            if (success) {
+                                showFloatingStatus(`Saved file: ${filename}`, "success");
+                            } else {
+                                showFloatingStatus(`Failed to save file: ${filename}`, "danger");
+                            }
+                        }
+                        
+                        updateStatus("Incremental query completed successfully!", "success");
+                    }
+                    
+                } catch (error) {
+                    console.error("Error:", error);
+                    updateStatus(`An error occurred: ${error.message}`, "danger");
+                }
+                
+            } catch (error) {
+                console.error("Error:", error);
+                updateStatus(`An error occurred: ${error.message}`, "danger");
+            } finally {
+                // Hide loading indicator
+                toggleLoading(false);
+            }
+        }
+
+        // Initialize the page
+        function init() {
+            console.log("Initializing application...");
+            populateDefaultTables();
+            
+            // Set up event listeners
+            document.getElementById("snapshot").addEventListener("change", toggleSinceTimestamp);
+            document.getElementById("incremental").addEventListener("change", toggleSinceTimestamp);
+            document.getElementById("start-query-btn").addEventListener("click", startQuery);
+            
+            toggleSinceTimestamp();
+            showFloatingStatus("Application initialized successfully", "success");
+        }
+
+        // Call the initialization function when DOM is loaded
+        document.addEventListener("DOMContentLoaded", init);
+    </script>
+</body>
+</html>
