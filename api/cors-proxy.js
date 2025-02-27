@@ -1,6 +1,8 @@
 const axios = require('axios');
 
 module.exports = async (req, res) => {
+  console.log(`Received ${req.method} request from origin: ${req.headers.origin}`);
+  
   // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', true);
   // Use the requesting origin instead of '*'
@@ -14,19 +16,24 @@ module.exports = async (req, res) => {
 
   // Handle preflight OPTIONS request
   if (req.method === 'OPTIONS') {
+    console.log('Responding to OPTIONS request');
     res.status(200).end();
     return;
   }
 
-  // Only allow POST requests
-  if (req.method !== 'POST') {
+  // Allow POST and GET requests
+  if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).send('Method Not Allowed');
   }
 
   try {
-    const { url, method, headers, data, params } = req.body;
+    const { url, method, headers, data, params } = req.body || {};
     
-    console.log(`Proxying request to: ${method} ${url}`);
+    if (!url) {
+      return res.status(400).json({ error: 'URL is required' });
+    }
+    
+    console.log(`Proxying request to: ${method || 'GET'} ${url}`);
     
     // Make the actual request
     const response = await axios({
