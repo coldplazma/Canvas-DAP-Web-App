@@ -1,1 +1,53 @@
+/* Additional styles for the Canvas DAP Web App */
 
+.container {
+    max-width: 800px;
+    margin-top: 20px;
+    margin-bottom: 50px;
+}
+
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.btn-primary {
+    margin-top: 1rem;
+}
+
+#status {
+    margin-top: 1rem;
+    padding: 10px;
+    border-radius: 5px;
+    display: none;
+}
+
+#loading {
+    display: none;
+    margin-top: 1rem;
+}
+
+.info-card {
+    margin-bottom: 20px;
+}
+
+.browser-compatibility {
+    margin-top: 20px;
+    font-size: 0.9rem;
+}
+
+.floating-status {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    max-width: 400px;
+    z-index: 1050;
+    display: none;
+}
+
+.footer {
+    text-align: center;
+    margin-top: 2rem;
+    padding: 1rem 0;
+    font-size: 0.9rem;
+    color: #666;
+}
