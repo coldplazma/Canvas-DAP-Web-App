@@ -1,5 +1,3 @@
-[Link to the live app in Vercel](https://canvas-dap-web-app.vercel.app/dap-query-web-app-js.html)
-
 # Canvas DAP Web App
 
 A web-based client for the Canvas Learning Management System's Data Access Platform (DAP) API. This application allows you to query and download data from the Canvas DAP API directly from your browser.
@@ -109,13 +107,73 @@ To run this project locally:
 - `/api` - Contains the proxy serverless function
 - `/css` - Contains any custom CSS
 
-## Deployment
+## Deployment on Vercel
 
-This project is set up for easy deployment to Vercel:
+### Why Vercel?
 
-1. Fork/clone this repository
-2. Connect your GitHub repo to Vercel
-3. Deploy with a single click
+This project is specifically designed to be deployed on Vercel for several critical reasons:
+
+1. **SSL/CORS Issue Resolution**: The Canvas DAP API requires HTTPS connections and has CORS restrictions. When running locally or on traditional hosting, browsers block cross-origin requests to the Canvas API. Vercel solves this by providing:
+   - Automatic SSL certificates for secure HTTPS connections
+   - Serverless functions that act as a CORS proxy
+
+2. **Node.js Serverless Proxy**: The application uses a Node.js serverless function (`/api/proxy.js`) that:
+   - Runs server-side code without maintaining a traditional server
+   - Handles the sensitive API requests including authentication
+   - Properly manages binary data transfers
+   - Shields client credentials from browser exposure
+
+3. **Serverless Architecture Benefits**:
+   - Zero infrastructure management
+   - Automatic scaling based on usage
+   - Pay-only-for-what-you-use cost structure
+   - Global CDN deployment for low latency
+   - CI/CD integration with GitHub for easy updates
+
+### What is Node.js?
+
+Node.js is a JavaScript runtime that allows JavaScript to run on a server rather than just in a browser. In this application, we use Node.js to:
+- Process HTTP requests server-side
+- Handle authentication securely
+- Manage binary data correctly
+- Route API requests to Canvas DAP
+
+### How to Deploy to Vercel
+
+Deploying this application to Vercel is remarkably simple:
+
+1. **Fork or Clone the Repository**
+   - Create your own copy of this repository on GitHub
+
+2. **Sign Up for Vercel**
+   - Go to [Vercel](https://vercel.com/) and sign up for a free account
+   - Connect your GitHub account to Vercel
+
+3. **Import Your Repository**
+   - From the Vercel dashboard, click "Add New..."
+   - Select "Project"
+   - Choose the repository you forked/cloned
+
+4. **Configure the Project** (usually no changes needed)
+   - Framework Preset: Other
+   - Build Command: Leave default
+   - Output Directory: Leave default
+
+5. **Deploy**
+   - Click "Deploy"
+   - Vercel will automatically detect the Node.js API folder and deploy it as serverless functions
+
+6. **Access Your Application**
+   - Once deployment is complete, Vercel will provide you with a URL
+   - Your application is now live and ready to use
+
+### Custom Domains (Optional)
+
+If you want to use your own domain:
+1. Go to your project settings in Vercel
+2. Navigate to the "Domains" section
+3. Add your custom domain
+4. Follow Vercel's instructions to configure DNS records
 
 ## License
 

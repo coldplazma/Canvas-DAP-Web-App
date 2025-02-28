@@ -474,26 +474,66 @@
                     }]
                 };
                 
-                // Show save file picker dialog
-                const fileHandle = await window.showSaveFilePicker(options);
-                
-                // Create a writable stream
-                const writable = await fileHandle.createWritable();
-                
-                // Handle binary data properly (for compressed files or any ArrayBuffer data)
-                if (isCompressed || data instanceof ArrayBuffer || (typeof data === 'object' && data !== null)) {
-                    // For binary data, ensure we're writing it as-is without text conversion
-                    console.log("Saving binary data", typeof data);
-                    await writable.write(data);
-                } else {
-                    // For text data
-                    await writable.write(data);
+                try {
+                    // Create a download link as a fallback method if FilePicker fails
+                    const createDownloadLink = () => {
+                        try {
+                            // Convert to Blob if it's not already
+                            const blob = data instanceof Blob ? data : 
+                                         data instanceof ArrayBuffer ? new Blob([data], { type: mimeType }) : 
+                                         new Blob([data], { type: mimeType });
+                            
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = filename;
+                            document.body.appendChild(a);
+                            a.click();
+                            window.setTimeout(() => {
+                                document.body.removeChild(a);
+                                URL.revokeObjectURL(url);
+                            }, 0);
+                            return true;
+                        } catch (fallbackError) {
+                            console.error("Fallback download failed:", fallbackError);
+                            return false;
+                        }
+                    };
+                    
+                    try {
+                        // Show save file picker dialog
+                        const fileHandle = await window.showSaveFilePicker(options);
+                        
+                        // Create a writable stream
+                        const writable = await fileHandle.createWritable();
+                        
+                        // Handle binary data properly (for compressed files or any ArrayBuffer data)
+                        if (isCompressed || data instanceof ArrayBuffer || (typeof data === 'object' && data !== null)) {
+                            console.log("Saving binary data", typeof data);
+                            await writable.write(data);
+                        } else {
+                            // For text data
+                            await writable.write(data);
+                        }
+                        
+                        // Close the file
+                        await writable.close();
+                        
+                        return true;
+                    } catch (err) {
+                        // If it's a security error, try fallback download method
+                        if (err.name === 'SecurityError') {
+                            console.error("Browser security prevented File System Access API. Trying fallback download method.");
+                            return createDownloadLink();
+                        } else {
+                            throw err; // Re-throw if it's not a security error
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error in file saving process:", err);
+                    // Try fallback method as last resort
+                    return createDownloadLink();
                 }
-                
-                // Close the file
-                await writable.close();
-                
-                return true;
             } catch (error) {
                 console.error("Error saving file:", error);
                 updateStatus(`Error saving file: ${error.message}`, "danger");
