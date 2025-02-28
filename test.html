@@ -130,81 +130,6 @@
     
     <script src="dap_client.js"></script>
     <script>
-        // Helper function to toggle loading overlay
-        function toggleLoading(show, message = "Loading...") {
-            const loadingOverlay = document.getElementById("loading-overlay");
-            const loadingMessage = document.getElementById("loading-message");
-            
-            if (show) {
-                loadingMessage.textContent = message;
-                loadingOverlay.style.display = "flex";
-            } else {
-                loadingOverlay.style.display = "none";
-            }
-        }
-        
-        // Function to show status messages
-        function updateStatus(message, statusType = "info") {
-            const statusElem = document.getElementById("status");
-            statusElem.className = `alert alert-${statusType} mt-3`;
-            statusElem.textContent = message;
-            statusElem.style.display = "block";
-        }
-
-        // Function to show floating status messages
-        function showFloatingStatus(message, statusType = "info") {
-            const statusElem = document.getElementById("floating-status");
-            statusElem.className = `floating-status alert alert-${statusType}`;
-            document.getElementById("floating-status-text").textContent = message;
-            statusElem.style.display = "block";
-            
-            // Auto-hide after 5 seconds
-            setTimeout(() => {
-                statusElem.style.display = "none";
-            }, 5000);
-        }
-        
-        // Helper function to fix file names
-        function fixFilename(filename, fileFormat) {
-            // Check if it's a compressed file (.gz)
-            const isCompressed = filename.includes(".gz");
-            
-            // Don't add extension if it's a compressed file or already has the right extension
-            if (!isCompressed && !filename.endsWith(`.${fileFormat}`)) {
-                return `${filename}.${fileFormat}`;
-            }
-            
-            return filename;
-        }
-        
-        // Function to update the table dropdown
-        async function updateTableDropdown(dapClient, namespace, scope = null) {
-            try {
-                toggleLoading(true, "Fetching tables...");
-                const tables = await dapClient.getTables(namespace, scope);
-                
-                const tableSelect = document.getElementById("table");
-                
-                // Clear existing options
-                tableSelect.innerHTML = '<option value="" selected disabled>Select a table</option>';
-                
-                // Add new options
-                tables.forEach(tableName => {
-                    const option = document.createElement("option");
-                    option.value = tableName;
-                    option.textContent = tableName;
-                    tableSelect.appendChild(option);
-                });
-                
-                showFloatingStatus(`Loaded ${tables.length} tables`, "success");
-            } catch (error) {
-                console.error("Failed to update table dropdown:", error);
-                updateStatus(`Failed to load tables: ${error.message}`, "danger");
-            } finally {
-                toggleLoading(false);
-            }
-        }
-        
         document.addEventListener('DOMContentLoaded', function() {
             // Initialize
             const dapClient = new DAPClient();
@@ -333,18 +258,16 @@
                             let filename = fileData.filename || `${table}.${fileFormat}`;
                             const content = fileData.content;
                             
-                            // Fix filename to prevent duplicate extensions
-                            filename = fixFilename(filename, fileFormat);
+                            if (!filename.endsWith(`.${fileFormat}`)) {
+                                filename = `${filename}.${fileFormat}`;
+                            }
                             
-                            // Add user interaction to create a fresh user gesture
-                            if (confirm(`Ready to download file: ${filename}?`)) {
-                                const success = await saveFile(content, filename);
-                                
-                                if (success) {
-                                    showFloatingStatus(`Saved file: ${filename}`, "success");
-                                } else {
-                                    showFloatingStatus(`Failed to save file: ${filename}`, "danger");
-                                }
+                            const success = await saveFile(content, filename);
+                            
+                            if (success) {
+                                showFloatingStatus(`Saved file: ${filename}`, "success");
+                            } else {
+                                showFloatingStatus(`Failed to save file: ${filename}`, "danger");
                             }
                         }
                         
@@ -394,18 +317,16 @@
                             let filename = fileData.filename || `${table}_incremental.${fileFormat}`;
                             const content = fileData.content;
                             
-                            // Fix filename to prevent duplicate extensions
-                            filename = fixFilename(filename, fileFormat);
+                            if (!filename.endsWith(`.${fileFormat}`)) {
+                                filename = `${filename}.${fileFormat}`;
+                            }
                             
-                            // Add user interaction to create a fresh user gesture
-                            if (confirm(`Ready to download file: ${filename}?`)) {
-                                const success = await saveFile(content, filename);
-                                
-                                if (success) {
-                                    showFloatingStatus(`Saved file: ${filename}`, "success");
-                                } else {
-                                    showFloatingStatus(`Failed to save file: ${filename}`, "danger");
-                                }
+                            const success = await saveFile(content, filename);
+                            
+                            if (success) {
+                                showFloatingStatus(`Saved file: ${filename}`, "success");
+                            } else {
+                                showFloatingStatus(`Failed to save file: ${filename}`, "danger");
                             }
                         }
                         
@@ -419,6 +340,19 @@
                 }
             });
             
+            // Helper function to toggle loading overlay
+            function toggleLoading(show, message = "Loading...") {
+                const loadingOverlay = document.getElementById("loading-overlay");
+                const loadingMessage = document.getElementById("loading-message");
+                
+                if (show) {
+                    loadingMessage.textContent = message;
+                    loadingOverlay.style.display = "flex";
+                } else {
+                    loadingOverlay.style.display = "none";
+                }
+            }
+            
             // Function to fetch tables and update the dropdown
             async function fetchTables(dapClient, namespace, scope = null) {
                 try {
@@ -431,7 +365,7 @@
                     showFloatingStatus("Failed to load tables from API", "warning");
                 }
             }
-        });
+        }
         
         // Function to save file using File System Access API
         async function saveFile(data, filename, mimeType = "text/plain") {
@@ -498,6 +432,55 @@
                 console.error("Error saving file:", error);
                 updateStatus(`Error saving file: ${error.message}`, "danger");
                 return false;
+            }
+        }
+
+        // Function to show status messages
+        function updateStatus(message, statusType = "info") {
+            const statusElem = document.getElementById("status");
+            statusElem.className = `alert alert-${statusType} mt-3`;
+            statusElem.textContent = message;
+            statusElem.style.display = "block";
+        }
+
+        // Function to show floating status messages
+        function showFloatingStatus(message, statusType = "info") {
+            const statusElem = document.getElementById("floating-status");
+            statusElem.className = `floating-status alert alert-${statusType}`;
+            document.getElementById("floating-status-text").textContent = message;
+            statusElem.style.display = "block";
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                statusElem.style.display = "none";
+            }, 5000);
+        }
+        
+        // Function to update the table dropdown
+        async function updateTableDropdown(dapClient, namespace, scope = null) {
+            try {
+                toggleLoading(true, "Fetching tables...");
+                const tables = await dapClient.getTables(namespace, scope);
+                
+                const tableSelect = document.getElementById("table");
+                
+                // Clear existing options
+                tableSelect.innerHTML = '<option value="" selected disabled>Select a table</option>';
+                
+                // Add new options
+                tables.forEach(tableName => {
+                    const option = document.createElement("option");
+                    option.value = tableName;
+                    option.textContent = tableName;
+                    tableSelect.appendChild(option);
+                });
+                
+                showFloatingStatus(`Loaded ${tables.length} tables`, "success");
+            } catch (error) {
+                console.error("Failed to update table dropdown:", error);
+                updateStatus(`Failed to load tables: ${error.message}`, "danger");
+            } finally {
+                toggleLoading(false);
             }
         }
     </script>
