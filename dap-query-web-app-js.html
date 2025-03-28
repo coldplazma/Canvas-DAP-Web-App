@@ -45,6 +45,27 @@
             display: none;
             min-width: 300px;
         }
+        #console-log {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 150px;
+            background-color: #f8f9fa;
+            border-top: 1px solid #dee2e6;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            overflow-y: auto;
+            display: none;
+            z-index: 9997;
+        }
+        .show-console {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 9996;
+        }
     </style>
 </head>
 <body>
@@ -128,9 +149,51 @@
         <span id="floating-status-text"></span>
     </div>
     
+    <button id="toggle-console" class="btn btn-sm btn-secondary show-console">Show Console</button>
+    <div id="console-log"></div>
+    
     <script src="dap_client.js"></script>
     <script>
-        // Helper function to toggle loading overlay
+        // Global client
+        let dapClient = null;
+        
+        // Custom console logging
+        document.getElementById('toggle-console').addEventListener('click', function() {
+            const consoleLogDiv = document.getElementById('console-log');
+            if (consoleLogDiv.style.display === 'none') {
+                consoleLogDiv.style.display = 'block';
+                this.textContent = 'Hide Console';
+            } else {
+                consoleLogDiv.style.display = 'none';
+                this.textContent = 'Show Console';
+            }
+        });
+        
+        // Override console.log
+        const originalConsoleLog = console.log;
+        console.log = function() {
+            // Call original
+            originalConsoleLog.apply(console, arguments);
+            
+            // Add to our custom console
+            const message = Array.from(arguments).map(arg => {
+                if (typeof arg === 'object') {
+                    try {
+                        return JSON.stringify(arg, null, 2);
+                    } catch (e) {
+                        return String(arg);
+                    }
+                }
+                return String(arg);
+            }).join(' ');
+            
+            const logEntry = document.createElement('div');
+            logEntry.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+            document.getElementById('console-log').appendChild(logEntry);
+            document.getElementById('console-log').scrollTop = document.getElementById('console-log').scrollHeight;
+        };
+        
+        // Helper functions
         function toggleLoading(show, message = "Loading...") {
             const loadingOverlay = document.getElementById("loading-overlay");
             const loadingMessage = document.getElementById("loading-message");
@@ -143,15 +206,14 @@
             }
         }
         
-        // Function to show status messages
         function updateStatus(message, statusType = "info") {
             const statusElem = document.getElementById("status");
             statusElem.className = `alert alert-${statusType} mt-3`;
             statusElem.textContent = message;
             statusElem.style.display = "block";
+            console.log(`Status update (${statusType}): ${message}`);
         }
-
-        // Function to show floating status messages
+        
         function showFloatingStatus(message, statusType = "info") {
             const statusElem = document.getElementById("floating-status");
             statusElem.className = `floating-status alert alert-${statusType}`;
@@ -164,7 +226,6 @@
             }, 5000);
         }
         
-        // Helper function to fix file names
         function fixFilename(filename, fileFormat) {
             // Check if it's a compressed file (.gz)
             const isCompressed = filename.includes(".gz");
@@ -177,263 +238,7 @@
             return filename;
         }
         
-        // Function to update the table dropdown
-        async function updateTableDropdown(dapClient, namespace, scope = null) {
-            try {
-                toggleLoading(true, "Fetching tables...");
-                const tables = await dapClient.getTables(namespace, scope);
-                
-                const tableSelect = document.getElementById("table");
-                
-                // Clear existing options
-                tableSelect.innerHTML = '<option value="" selected disabled>Select a table</option>';
-                
-                // Add new options
-                tables.forEach(tableName => {
-                    const option = document.createElement("option");
-                    option.value = tableName;
-                    option.textContent = tableName;
-                    tableSelect.appendChild(option);
-                });
-                
-                showFloatingStatus(`Loaded ${tables.length} tables`, "success");
-            } catch (error) {
-                console.error("Failed to update table dropdown:", error);
-                updateStatus(`Failed to load tables: ${error.message}`, "danger");
-            } finally {
-                toggleLoading(false);
-            }
-        }
-        
-        document.addEventListener('DOMContentLoaded', function() {
-            // Initialize
-            const dapClient = new DAPClient();
-            
-            // DOM Elements
-            const namespaceSelect = document.getElementById("namespace");
-            const scopeInput = document.getElementById("scope");
-            const tableSelect = document.getElementById("table");
-            const queryTypeSelect = document.getElementById("query-type");
-            const sinceDateContainer = document.getElementById("since-date-container");
-            const sinceTimestampInput = document.getElementById("since-timestamp");
-            const fileFormatSelect = document.getElementById("file-format");
-            const clientIdInput = document.getElementById("client-id");
-            const clientSecretInput = document.getElementById("client-secret");
-            const fetchTablesBtn = document.getElementById("fetch-tables-btn");
-            const runQueryBtn = document.getElementById("run-query-btn");
-            
-            // Set up event listeners
-            queryTypeSelect.addEventListener("change", function() {
-                if (this.value === "incremental") {
-                    sinceDateContainer.style.display = "block";
-                } else {
-                    sinceDateContainer.style.display = "none";
-                }
-            });
-            
-            fetchTablesBtn.addEventListener("click", async function() {
-                const clientId = clientIdInput.value.trim();
-                const clientSecret = clientSecretInput.value.trim();
-                const namespace = namespaceSelect.value;
-                const scope = scopeInput.value.trim() || null;
-                
-                if (!clientId || !clientSecret) {
-                    updateStatus("Please enter Client ID and Client Secret", "warning");
-                    return;
-                }
-                
-                dapClient.clientId = clientId;
-                dapClient.clientSecret = clientSecret;
-                
-                toggleLoading(true, "Fetching tables...");
-                updateStatus("Authenticating and fetching tables...", "info");
-                
-                try {
-                    await fetchTables(dapClient, namespace, scope);
-                    updateStatus("Tables fetched successfully!", "success");
-                } catch (error) {
-                    updateStatus(`Error fetching tables: ${error.message}`, "danger");
-                } finally {
-                    toggleLoading(false);
-                }
-            });
-            
-            runQueryBtn.addEventListener("click", async function() {
-                const clientId = clientIdInput.value.trim();
-                const clientSecret = clientSecretInput.value.trim();
-                const namespace = namespaceSelect.value;
-                const scope = scopeInput.value.trim() || null;
-                const table = tableSelect.value;
-                const queryType = queryTypeSelect.value;
-                const fileFormat = fileFormatSelect.value;
-                
-                if (!clientId || !clientSecret) {
-                    updateStatus("Please enter Client ID and Client Secret", "warning");
-                    return;
-                }
-                
-                if (!table) {
-                    updateStatus("Please select a table", "warning");
-                    return;
-                }
-                
-                dapClient.clientId = clientId;
-                dapClient.clientSecret = clientSecret;
-                
-                toggleLoading(true, "Starting query...");
-                updateStatus("Starting query...", "info");
-                
-                try {
-                    // First authenticate
-                    toggleLoading(true, "Authenticating with Canvas DAP API...");
-                    await dapClient.authenticate();
-                    
-                    // Update the table dropdown with actual tables from the API
-                    await updateTableDropdown(dapClient, namespace, scope);
-                    
-                    // Get table schema
-                    toggleLoading(true, `Retrieving schema for table '${table}'...`);
-                    updateStatus("Retrieving table schema...", "info");
-                    
-                    const schema = await dapClient.getTableSchema(namespace, table, scope);
-                    console.log(`Table schema version: ${schema.version || 'unknown'}`);
-                    
-                    // Create the appropriate query
-                    let query;
-                    
-                    if (queryType === "snapshot") {
-                        // Perform a snapshot query
-                        toggleLoading(true, "Performing snapshot query...");
-                        updateStatus("Performing snapshot query...", "info");
-                        
-                        query = dapClient.createSnapshotQuery(fileFormat);
-                        
-                        // Get the table data
-                        const jobInfo = await dapClient.getTableData(namespace, table, query, scope);
-                        console.log(`Snapshot query completed. Job ID: ${jobInfo.id}`);
-                        
-                        // Download the data
-                        toggleLoading(true, "Downloading snapshot data...");
-                        updateStatus("Downloading snapshot data...", "info");
-                        
-                        const downloadResult = await dapClient.downloadTableData(namespace, table, query, scope);
-                        
-                        // Save each file
-                        const files = downloadResult.files || [];
-                        
-                        if (files.length === 0) {
-                            updateStatus("No data files returned from the query.", "warning");
-                            toggleLoading(false);
-                            return;
-                        }
-                        
-                        toggleLoading(true, `Saving ${files.length} file(s)...`);
-                        
-                        for (const fileData of files) {
-                            let filename = fileData.filename || `${table}.${fileFormat}`;
-                            const content = fileData.content;
-                            
-                            // Fix filename to prevent duplicate extensions
-                            filename = fixFilename(filename, fileFormat);
-                            
-                            // Add user interaction to create a fresh user gesture
-                            if (confirm(`Ready to download file: ${filename}?`)) {
-                                const success = await saveFile(content, filename);
-                                
-                                if (success) {
-                                    showFloatingStatus(`Saved file: ${filename}`, "success");
-                                } else {
-                                    showFloatingStatus(`Failed to save file: ${filename}`, "danger");
-                                }
-                            }
-                        }
-                        
-                        updateStatus("Snapshot query completed successfully!", "success");
-                        
-                    } else {  // incremental
-                        // Get the since timestamp
-                        const sinceTimestamp = document.getElementById("since-timestamp").value;
-                        
-                        if (!sinceTimestamp) {
-                            updateStatus("Please select a since timestamp for incremental query", "warning");
-                            toggleLoading(false);
-                            return;
-                        }
-                        
-                        // Convert the since_timestamp string to a Date object
-                        const sinceDate = new Date(sinceTimestamp);
-                        
-                        // Perform an incremental query
-                        toggleLoading(true, "Performing incremental query...");
-                        updateStatus("Performing incremental query...", "info");
-                        
-                        query = dapClient.createIncrementalQuery(fileFormat, sinceDate);
-                        
-                        // Get the table data
-                        const jobInfo = await dapClient.getTableData(namespace, table, query, scope);
-                        console.log(`Incremental query completed. Job ID: ${jobInfo.id}`);
-                        
-                        // Download the data
-                        toggleLoading(true, "Downloading incremental data...");
-                        updateStatus("Downloading incremental data...", "info");
-                        
-                        const downloadResult = await dapClient.downloadTableData(namespace, table, query, scope);
-                        
-                        // Save each file
-                        const files = downloadResult.files || [];
-                        
-                        if (files.length === 0) {
-                            updateStatus("No data files returned from the query.", "warning");
-                            toggleLoading(false);
-                            return;
-                        }
-                        
-                        toggleLoading(true, `Saving ${files.length} file(s)...`);
-                        
-                        for (const fileData of files) {
-                            let filename = fileData.filename || `${table}_incremental.${fileFormat}`;
-                            const content = fileData.content;
-                            
-                            // Fix filename to prevent duplicate extensions
-                            filename = fixFilename(filename, fileFormat);
-                            
-                            // Add user interaction to create a fresh user gesture
-                            if (confirm(`Ready to download file: ${filename}?`)) {
-                                const success = await saveFile(content, filename);
-                                
-                                if (success) {
-                                    showFloatingStatus(`Saved file: ${filename}`, "success");
-                                } else {
-                                    showFloatingStatus(`Failed to save file: ${filename}`, "danger");
-                                }
-                            }
-                        }
-                        
-                        updateStatus("Incremental query completed successfully!", "success");
-                    }
-                } catch (error) {
-                    console.error("Query error:", error);
-                    updateStatus(`Error: ${error.message}`, "danger");
-                } finally {
-                    toggleLoading(false);
-                }
-            });
-            
-            // Function to fetch tables and update the dropdown
-            async function fetchTables(dapClient, namespace, scope = null) {
-                try {
-                    toggleLoading(true, "Authenticating with Canvas DAP API...");
-                    await dapClient.authenticate();
-                    
-                    await updateTableDropdown(dapClient, namespace, scope);
-                } catch (error) {
-                    console.error("Failed to fetch tables:", error);
-                    showFloatingStatus("Failed to load tables from API", "warning");
-                }
-            }
-        });
-        
-        // Function to save file using File System Access API
+        // Save file using File System Access API
         async function saveFile(data, filename, mimeType = "text/plain") {
             try {
                 // Check if browser supports File System Access API
@@ -474,72 +279,392 @@
                     }]
                 };
                 
-                try {
-                    // Create a download link as a fallback method if FilePicker fails
-                    const createDownloadLink = () => {
-                        try {
-                            // Convert to Blob if it's not already
-                            const blob = data instanceof Blob ? data : 
-                                         data instanceof ArrayBuffer ? new Blob([data], { type: mimeType }) : 
-                                         new Blob([data], { type: mimeType });
-                            
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = filename;
-                            document.body.appendChild(a);
-                            a.click();
-                            window.setTimeout(() => {
-                                document.body.removeChild(a);
-                                URL.revokeObjectURL(url);
-                            }, 0);
-                            return true;
-                        } catch (fallbackError) {
-                            console.error("Fallback download failed:", fallbackError);
-                            return false;
-                        }
-                    };
-                    
+                // Create a download link as a fallback method if FilePicker fails
+                const createDownloadLink = () => {
                     try {
-                        // Show save file picker dialog
-                        const fileHandle = await window.showSaveFilePicker(options);
+                        // Convert to Blob if it's not already
+                        const blob = data instanceof Blob ? data : 
+                                    data instanceof ArrayBuffer ? new Blob([data], { type: mimeType }) : 
+                                    new Blob([data], { type: mimeType });
                         
-                        // Create a writable stream
-                        const writable = await fileHandle.createWritable();
-                        
-                        // Handle binary data properly (for compressed files or any ArrayBuffer data)
-                        if (isCompressed || data instanceof ArrayBuffer || (typeof data === 'object' && data !== null)) {
-                            console.log("Saving binary data", typeof data);
-                            await writable.write(data);
-                        } else {
-                            // For text data
-                            await writable.write(data);
-                        }
-                        
-                        // Close the file
-                        await writable.close();
-                        
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.setTimeout(() => {
+                            document.body.removeChild(a);
+                            URL.revokeObjectURL(url);
+                        }, 0);
                         return true;
-                    } catch (err) {
-                        // If it's a security error, try fallback download method
-                        if (err.name === 'SecurityError') {
-                            console.error("Browser security prevented File System Access API. Trying fallback download method.");
-                            return createDownloadLink();
-                        } else {
-                            throw err; // Re-throw if it's not a security error
-                        }
+                    } catch (fallbackError) {
+                        console.error("Fallback download failed:", fallbackError);
+                        return false;
                     }
+                };
+                
+                // Log file size for debugging
+                let dataSize = "unknown";
+                if (data instanceof ArrayBuffer) {
+                    dataSize = `${(data.byteLength / (1024 * 1024)).toFixed(2)} MB`;
+                } else if (typeof data === 'string') {
+                    dataSize = `${(data.length / (1024 * 1024)).toFixed(2)} MB`;
+                } else if (Array.isArray(data)) {
+                    dataSize = `${(data.length * 2 / (1024 * 1024)).toFixed(2)} MB (estimated)`;
+                }
+                console.log(`Saving file ${filename} with approximate size: ${dataSize}`);
+                
+                try {
+                    // Show save file picker dialog
+                    const fileHandle = await window.showSaveFilePicker(options);
+                    
+                    // Create a writable stream
+                    const writable = await fileHandle.createWritable();
+                    
+                    // Handle binary data properly (for compressed files or any ArrayBuffer data)
+                    if (isCompressed || data instanceof ArrayBuffer || (typeof data === 'object' && data !== null)) {
+                        console.log("Saving binary data", typeof data);
+                        await writable.write(data);
+                    } else {
+                        // For text data
+                        await writable.write(data);
+                    }
+                    
+                    // Close the file
+                    await writable.close();
+                    
+                    return true;
                 } catch (err) {
-                    console.error("Error in file saving process:", err);
-                    // Try fallback method as last resort
-                    return createDownloadLink();
+                    // If it's a security error, try fallback download method
+                    if (err.name === 'SecurityError') {
+                        console.error("Browser security prevented File System Access API. Trying fallback download method.");
+                        return createDownloadLink();
+                    } else if (err.name === 'NotAllowedError') {
+                        console.error("User denied permission to save the file.");
+                        updateStatus("Permission to save file was denied. Please try again.", "warning");
+                        return false;
+                    } else if (err.name === 'QuotaExceededError' || err.message?.includes('quota')) {
+                        console.error("Quota exceeded error when saving file - file may be too large");
+                        updateStatus("The file is too large to save through this method. Try using a smaller dataset or different format.", "warning");
+                        return createDownloadLink(); // Try fallback for large files
+                    } else {
+                        throw err; // Re-throw if it's not a security error
+                    }
                 }
             } catch (error) {
                 console.error("Error saving file:", error);
                 updateStatus(`Error saving file: ${error.message}`, "danger");
+                
+                // Try fallback method as last resort
+                if (error.message?.includes("memory") || error.message?.includes("size") || 
+                    error.message?.includes("large") || error.message?.includes("allocation")) {
+                    updateStatus("The file is very large. Using download link method instead.", "warning");
+                    return createDownloadLink();
+                }
+                
                 return false;
             }
         }
+        
+        // Update the table dropdown
+        async function updateTableDropdown(namespace, scope = null) {
+            try {
+                toggleLoading(true, "Fetching tables...");
+                const tables = await dapClient.getTables(namespace, scope);
+                
+                const tableSelect = document.getElementById("table");
+                
+                // Clear existing options
+                tableSelect.innerHTML = '<option value="" selected disabled>Select a table</option>';
+                
+                // Add new options
+                tables.forEach(tableName => {
+                    const option = document.createElement("option");
+                    option.value = tableName;
+                    option.textContent = tableName;
+                    tableSelect.appendChild(option);
+                });
+                
+                showFloatingStatus(`Loaded ${tables.length} tables`, "success");
+                return true;
+            } catch (error) {
+                console.error("Failed to update table dropdown:", error);
+                updateStatus(`Failed to load tables: ${error.message}`, "danger");
+                return false;
+            } finally {
+                toggleLoading(false);
+            }
+        }
+        
+        // Handle multi-part downloads
+        async function handleMultiPartDownload(files, table, fileFormat) {
+            // Check if we have multiple redirect files (multi-part dataset)
+            const redirectFiles = files.filter(f => f.isRedirect && f.redirectUrl);
+            const regularFiles = files.filter(f => !f.isRedirect || !f.redirectUrl);
+            
+            // Function to sort filenames with part numbers correctly
+            function sortFileParts(a, b) {
+                // Extract part numbers if present
+                const partRegex = /part-(\d+)/;
+                const aMatch = a.filename?.match(partRegex);
+                const bMatch = b.filename?.match(partRegex);
+                
+                if (aMatch && bMatch) {
+                    return parseInt(aMatch[1]) - parseInt(bMatch[1]);
+                }
+                return a.filename?.localeCompare(b.filename) || 0;
+            }
+            
+            // Sort redirect files by part number
+            const sortedRedirectFiles = [...redirectFiles].sort(sortFileParts);
+            
+            if (sortedRedirectFiles.length > 0) {
+                // Handle multi-part dataset case
+                let message = `This dataset has ${sortedRedirectFiles.length} parts.\n\n`;
+                message += "Would you like to download all parts?\n\n";
+                message += "Click OK to open download tabs for all parts.\n";
+                message += "Click Cancel to download files one by one.\n\n";
+                message += "Note: You may need to allow popups in your browser.";
+                
+                if (confirm(message)) {
+                    // Download all parts at once
+                    toggleLoading(true, `Opening download tabs for ${sortedRedirectFiles.length} parts...`);
+                    
+                    let delayMs = 0;
+                    const stepMs = 300; // Add a small delay between tabs to avoid browser blocking
+                    
+                    for (const fileData of sortedRedirectFiles) {
+                        const filename = fixFilename(fileData.filename || `${table}.${fileFormat}`, fileFormat);
+                        
+                        // Use setTimeout to space out the tab openings
+                        setTimeout(() => {
+                            window.open(fileData.redirectUrl, '_blank');
+                            console.log(`Opening download tab for ${filename}`);
+                        }, delayMs);
+                        
+                        delayMs += stepMs;
+                    }
+                    
+                    showFloatingStatus(`Started download for ${sortedRedirectFiles.length} files`, "success");
+                } else {
+                    // Download files one by one with confirmation for each
+                    for (const fileData of sortedRedirectFiles) {
+                        const filename = fixFilename(fileData.filename || `${table}.${fileFormat}`, fileFormat);
+                        
+                        if (confirm(`Ready to download file: ${filename}?\nThis will open in a new tab.`)) {
+                            window.open(fileData.redirectUrl, '_blank');
+                            showFloatingStatus(`Started download for: ${filename}`, "success");
+                        }
+                    }
+                }
+            }
+            
+            // Handle any non-redirect files
+            for (const fileData of regularFiles) {
+                let filename = fileData.filename || `${table}.${fileFormat}`;
+                const content = fileData.content;
+                
+                // Fix filename to prevent duplicate extensions
+                filename = fixFilename(filename, fileFormat);
+                
+                // Normal file content download
+                if (confirm(`Ready to download file: ${filename}?`)) {
+                    const success = await saveFile(content, filename);
+                    
+                    if (success) {
+                        showFloatingStatus(`Saved file: ${filename}`, "success");
+                    } else {
+                        showFloatingStatus(`Failed to save file: ${filename}`, "danger");
+                    }
+                }
+            }
+        }
+        
+        // Set up UI when document is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log("Initializing Canvas DAP Query Tool");
+            
+            // Initialize the DAP client
+            dapClient = new DAPClient();
+            
+            // Set up Query Type change handler
+            document.getElementById("query-type").addEventListener("change", function() {
+                const sinceDateContainer = document.getElementById("since-date-container");
+                if (this.value === "incremental") {
+                    sinceDateContainer.style.display = "block";
+                } else {
+                    sinceDateContainer.style.display = "none";
+                }
+            });
+            
+            // Set up Fetch Tables button
+            document.getElementById("fetch-tables-btn").addEventListener("click", async function() {
+                console.log("Fetch Tables button clicked");
+                
+                const clientId = document.getElementById("client-id").value.trim();
+                const clientSecret = document.getElementById("client-secret").value.trim();
+                const namespace = document.getElementById("namespace").value;
+                const scope = document.getElementById("scope").value.trim() || null;
+                
+                if (!clientId || !clientSecret) {
+                    updateStatus("Please enter Client ID and Client Secret", "warning");
+                    return;
+                }
+                
+                // Set credentials
+                dapClient.clientId = clientId;
+                dapClient.clientSecret = clientSecret;
+                
+                toggleLoading(true, "Authenticating...");
+                updateStatus("Authenticating and fetching tables...", "info");
+                
+                try {
+                    // Authenticate first
+                    await dapClient.authenticate();
+                    console.log("Authentication successful");
+                    
+                    // Then update tables
+                    const success = await updateTableDropdown(namespace, scope);
+                    if (success) {
+                        updateStatus("Tables fetched successfully!", "success");
+                    }
+                } catch (error) {
+                    console.error("Error fetching tables:", error);
+                    updateStatus(`Error: ${error.message}`, "danger");
+                } finally {
+                    toggleLoading(false);
+                }
+            });
+            
+            // Set up Run Query button
+            document.getElementById("run-query-btn").addEventListener("click", async function() {
+                console.log("Run Query button clicked");
+                
+                const clientId = document.getElementById("client-id").value.trim();
+                const clientSecret = document.getElementById("client-secret").value.trim();
+                const namespace = document.getElementById("namespace").value;
+                const scope = document.getElementById("scope").value.trim() || null;
+                const table = document.getElementById("table").value;
+                const queryType = document.getElementById("query-type").value;
+                const fileFormat = document.getElementById("file-format").value;
+                
+                if (!clientId || !clientSecret) {
+                    updateStatus("Please enter Client ID and Client Secret", "warning");
+                    return;
+                }
+                
+                if (!table) {
+                    updateStatus("Please select a table", "warning");
+                    return;
+                }
+                
+                // Set credentials
+                dapClient.clientId = clientId;
+                dapClient.clientSecret = clientSecret;
+                
+                toggleLoading(true, "Starting query...");
+                updateStatus("Starting query...", "info");
+                
+                try {
+                    // First authenticate
+                    toggleLoading(true, "Authenticating with Canvas DAP API...");
+                    await dapClient.authenticate();
+                    
+                    // Get table schema
+                    toggleLoading(true, `Retrieving schema for table '${table}'...`);
+                    updateStatus("Retrieving table schema...", "info");
+                    
+                    const schema = await dapClient.getTableSchema(namespace, table, scope);
+                    console.log(`Table schema version: ${schema.version || 'unknown'}`);
+                    
+                    // Create the appropriate query
+                    let query;
+                    let jobInfo;
+                    
+                    if (queryType === "snapshot") {
+                        // Perform a snapshot query
+                        toggleLoading(true, "Performing snapshot query...");
+                        updateStatus("Performing snapshot query...", "info");
+                        
+                        query = dapClient.createSnapshotQuery(fileFormat);
+                        
+                        // Get the table data
+                        jobInfo = await dapClient.getTableData(namespace, table, query, scope);
+                        console.log(`Snapshot query completed. Job ID: ${jobInfo.id}`);
+                        
+                        // Download the data
+                        toggleLoading(true, "Downloading snapshot data...");
+                        updateStatus("Downloading snapshot data...", "info");
+                        
+                        const downloadResult = await dapClient.downloadTableData(namespace, table, query, scope);
+                        
+                        // Process each file
+                        const files = downloadResult.files || [];
+                        
+                        if (files.length === 0) {
+                            console.log('Job info with no files (snapshot):', jobInfo);
+                            updateStatus("No data files returned from the query. This could mean there is no data for the selected table or time period, or the Canvas DAP API is still processing the data.", "warning");
+                            toggleLoading(false);
+                            return;
+                        }
+                        
+                        // Handle the download process
+                        await handleMultiPartDownload(files, table, fileFormat);
+                        
+                        updateStatus("Snapshot query completed successfully!", "success");
+                    } else {  // incremental
+                        // Get the since timestamp
+                        const sinceTimestamp = document.getElementById("since-timestamp").value;
+                        
+                        if (!sinceTimestamp) {
+                            updateStatus("Please select a since timestamp for incremental query", "warning");
+                            toggleLoading(false);
+                            return;
+                        }
+                        
+                        // Convert the since_timestamp string to a Date object
+                        const sinceDate = new Date(sinceTimestamp);
+                        
+                        // Perform an incremental query
+                        toggleLoading(true, "Performing incremental query...");
+                        updateStatus("Performing incremental query...", "info");
+                        
+                        query = dapClient.createIncrementalQuery(fileFormat, sinceDate);
+                        
+                        // Get the table data
+                        jobInfo = await dapClient.getTableData(namespace, table, query, scope);
+                        console.log(`Incremental query completed. Job ID: ${jobInfo.id}`);
+                        
+                        // Download the data
+                        toggleLoading(true, "Downloading incremental data...");
+                        updateStatus("Downloading incremental data...", "info");
+                        
+                        const downloadResult = await dapClient.downloadTableData(namespace, table, query, scope);
+                        
+                        // Process each file
+                        const files = downloadResult.files || [];
+                        
+                        if (files.length === 0) {
+                            console.log('Job info with no files (incremental):', jobInfo);
+                            updateStatus("No data files returned from the query. This could mean there are no changes in the selected time period, or the Canvas DAP API is still processing the data.", "warning");
+                            toggleLoading(false);
+                            return;
+                        }
+                        
+                        // Handle the download process
+                        await handleMultiPartDownload(files, table, fileFormat);
+                        
+                        updateStatus("Incremental query completed successfully!", "success");
+                    }
+                } catch (error) {
+                    console.error("Query error:", error);
+                    updateStatus(`Error: ${error.message}`, "danger");
+                } finally {
+                    toggleLoading(false);
+                }
+            });
+        });
     </script>
 </body>
 </html>

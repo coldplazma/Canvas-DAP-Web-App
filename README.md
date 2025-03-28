@@ -1,5 +1,3 @@
-## **[Link to live app](https://canvas-dap-web-app.vercel.app/dap-query-web-app-js.html)**
-
 # Canvas DAP Web App
 
 A web-based client for the Canvas Learning Management System's Data Access Platform (DAP) API. This application allows you to query and download data from the Canvas DAP API directly from your browser.
@@ -11,6 +9,8 @@ A web-based client for the Canvas Learning Management System's Data Access Platf
 - Multiple export formats (JSONL, CSV, TSV, Parquet)
 - Robust binary file handling (including compressed files)
 - Direct file downloads using the File System Access API
+- Support for large file downloads via S3 presigned URLs
+- Efficient handling of multi-part datasets
 - Table browsing with dynamic updates
 - Transparent error handling with clear user feedback
 - Responsive UI with loading indicators
@@ -26,8 +26,9 @@ A web-based client for the Canvas Learning Management System's Data Access Platf
 6. If using Incremental, select a since timestamp
 7. Select your preferred file format
 8. Click "Run Query" to begin
-9. Confirm each file download when prompted
-10. Save the downloaded files to your computer
+9. For multi-part datasets, choose to download all parts at once or individually
+10. Allow popup windows when downloading multiple files
+11. Save the downloaded files to your computer
 
 ## Technology Stack
 
@@ -87,6 +88,8 @@ It is not supported in Firefox or Safari.
 - Special client-side processing for correct data handling
 - File type-specific MIME type assignment
 - Special handling in File System Access API
+- Direct S3 download redirection for large files
+- Multi-part dataset handling with batch download capabilities
 
 ## Privacy & Security
 
@@ -180,6 +183,35 @@ If you want to use your own domain:
 ## License
 
 MIT
+
+## Recent Updates & Fixes
+
+### March 2025 Update
+
+This update addresses several critical issues and adds new functionality:
+
+1. **Large File Handling**
+   - Fixed a critical issue where large files would cause 500 errors due to memory limitations in serverless functions
+   - Implemented direct S3 redirect mechanism for large files, bypassing the proxy for files hosted on S3
+   - Files now download correctly without server-side memory constraints
+
+2. **Multi-part Dataset Support**
+   - Added intelligent detection of multi-part datasets (files split into part-00001, part-00002, etc.)
+   - Implemented batch download capability that allows downloading all parts with a single confirmation
+   - Parts are now sorted correctly by number for logical order
+
+3. **UI & Usability Improvements**
+   - Enhanced console logging for better troubleshooting
+   - Fixed issues with button event handlers not working correctly
+   - Improved error handling with better feedback messages
+   - Added popup window management with sequential delays to prevent browser blocking
+
+4. **GZIP File Handling**
+   - Fixed issues with .gz files not being properly downloaded
+   - Ensured proper MIME type handling for compressed files
+   - Files now download as valid gzip compressed files that can be extracted with standard tools
+
+These changes significantly improve reliability when working with large datasets, which is common when querying Canvas DAP tables like "requests" or "assignments" that may return gigabytes of data in multiple parts.
 
 ## Credits
 
